@@ -2,8 +2,8 @@
 #include <SPI.h>
 
 #define PIN_CS 1
-#define PIN_LDAC 27
-#define PIN_DEBUG 28
+#define PIN_LDAC 26
+#define PIN_DEBUG 27
 
 const float PERIOD_US = 50;
 
@@ -19,7 +19,7 @@ uint16_t value = 0;
 char uart_buf[50];
 
 // 通信速度1Mbps、MSBファースト、モード0
-SPISettings settings(4000000, MSBFIRST, SPI_MODE0);
+SPISettings settings(2000000, MSBFIRST, SPI_MODE0);
 
 struct repeating_timer st_timer;
 bool timerFlag = false;
@@ -56,31 +56,28 @@ void setup() {
 
 void loop() {
   if (timerFlag && run) {
-    digitalWrite(PIN_DEBUG, HIGH);
     timerFlag = false;
 
     value_f = amp * sin(coefficient * (float)(count)) + offset;
-    value = (uint16_t)(value_f * 4096.0 / 3.3);
+    value = (uint16_t)(value_f * 1241.212121);  // 4096 / 3.3V = 1241.212121
 
     if (value > 4095) value = 4095;
     if (value < 0) value = 0;
     uint8_t high_byte = ((value & 0xFF00) >> 8) + 0x30;
     uint8_t low_byte = value & 0x00FF;
 
+    // SPI通信でDACにデータを送信
     digitalWrite(PIN_LDAC, HIGH);
-    delayMicroseconds(10);
-
     SPI.beginTransaction(settings);
     digitalWrite(PIN_CS, LOW);
     SPI.transfer(high_byte);
     SPI.transfer(low_byte);
     digitalWrite(PIN_CS, HIGH);
     SPI.endTransaction();
-
     digitalWrite(PIN_LDAC, LOW);
-    count++;
 
-    digitalWrite(PIN_DEBUG, LOW);
+    // カウントアップ
+    count++;
   }
 }
 
