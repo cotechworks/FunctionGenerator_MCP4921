@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
+#include "mcp4921.h"
 
 #define PIN_CS 1
 #define PIN_LDAC 26
@@ -19,7 +20,8 @@ uint16_t value = 0;
 char uart_buf[50];
 
 // 通信速度1Mbps、MSBファースト、モード0
-SPISettings settings(2000000, MSBFIRST, SPI_MODE0);
+SPISettings settings(4000000, MSBFIRST, SPI_MODE0);
+MCP4921 dac(PIN_CS, PIN_LDAC);
 
 struct repeating_timer st_timer;
 bool timerFlag = false;
@@ -34,11 +36,7 @@ void setup() {
   Serial.begin(115200);
 
   // GPIOの初期化
-  pinMode(PIN_CS, OUTPUT);
-  pinMode(PIN_LDAC, OUTPUT);
   pinMode(PIN_DEBUG, OUTPUT);
-  digitalWrite(PIN_CS, HIGH);
-  digitalWrite(PIN_LDAC, HIGH);
   digitalWrite(PIN_DEBUG, LOW);
 
   // SPI通信の初期化
@@ -46,6 +44,9 @@ void setup() {
   SPI.setTX(PIN_SPI0_MOSI);
   SPI.setRX(PIN_SPI0_MISO);
   SPI.begin();
+
+  // DACの初期化
+  dac.begin(SPI, settings);
 
   // タイマーの初期化(割込み間隔はusで指定)
   add_repeating_timer_us(PERIOD_US, Timer, NULL, &st_timer);
@@ -57,31 +58,25 @@ void setup() {
 void loop() {
   if (timerFlag && run) {
     timerFlag = false;
-
+    digitalWrite(PIN_DEBUG, HIGH);
     value_f = amp * sin(coefficient * (float)(count)) + offset;
     value = (uint16_t)(value_f * 1241.212121);  // 4096 / 3.3V = 1241.212121
 
     if (value > 4095) value = 4095;
     if (value < 0) value = 0;
-    uint8_t high_byte = ((value & 0xFF00) >> 8) + 0x30;
-    uint8_t low_byte = value & 0x00FF;
 
     // SPI通信でDACにデータを送信
-    digitalWrite(PIN_LDAC, HIGH);
-    SPI.beginTransaction(settings);
-    digitalWrite(PIN_CS, LOW);
-    SPI.transfer(high_byte);
-    SPI.transfer(low_byte);
-    digitalWrite(PIN_CS, HIGH);
-    SPI.endTransaction();
-    digitalWrite(PIN_LDAC, LOW);
+    dac.write(value);
 
     // カウントアップ
     count++;
+
+    digitalWrite(PIN_DEBUG, LOW);
   }
 }
 
 void loop1(){
+  // シリアルコマンドの処理
   if(Serial.available()) {
     String command = Serial.readStringUntil('\n');
     command.trim();
